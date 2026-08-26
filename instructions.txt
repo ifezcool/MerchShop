@@ -1,0 +1,208 @@
+Project Brief: MyAnimeList Merchandise Finder
+
+Overview
+
+A Streamlit web application that connects to a user's MyAnimeList account, retrieves their anime watchlist, and searches e-commerce platforms for related merchandise. Results are displayed as a personalized storefront with clickable product cards linking to external retailers.
+Core Features
+MyAnimeList Integration
+OAuth2 authentication with MAL API
+Fetch user's anime list (completed, watching, plan-to-watch, dropped, on-hold)
+Display anime titles, cover images, and metadata
+
+Merchandise Search
+Query multiple e-commerce platforms: Amazon, AliExpress, eBay, Etsy, etc.
+Search for character figures, clothing, posters, replicas (e.g., "Ichigo sword replica" for Bleach)
+Filter by product type, price range, store
+
+Personalized Storefront
+Grid layout displaying product cards (image, title, price, store logo)
+Click-through to external product pages
+Save/favorite products for later
+
+User Management
+Store user preferences and search history
+Cache search results to reduce API calls
+Track which products users have viewed/favorited
+
+Technical Stack
+
+Frontend: Streamlit
+Backend: Python 3.10+
+Database: Supabase (PostgreSQL)
+APIs:
+
+MyAnimeList API (Official)
+AliExpress Web scraping
+eBay API (optional)
+
+Database Schema (Supabase)
+Table: users
+- id (uuid, primary key)
+- mal_username (text, unique)
+- mal_user_id (integer, unique)
+- access_token (text, encrypted)
+- refresh_token (text, encrypted)
+- created_at (timestamp)
+- last_login (timestamp)
+
+Table: anime_lists
+- id (uuid, primary key)
+- user_id (uuid, foreign key -> users.id)
+- mal_anime_id (integer)
+- anime_title (text)
+- anime_image_url (text)
+- watch_status (enum: watching, completed, plan_to_watch, dropped, on_hold)
+- last_synced (timestamp)
+- UNIQUE(user_id, mal_anime_id)
+
+Table: products
+- id (uuid, primary key)
+- anime_id (integer, indexed)
+- anime_title (text)
+- product_title (text)
+- product_url (text)
+- image_url (text)
+- price (decimal)
+- currency (text)
+- store (text: amazon, aliexpress, ebay, etc.)
+- product_type (text: figure, clothing, accessory, replica, poster, etc.)
+- asin_or_product_id (text, unique per store)
+- last_updated (timestamp)
+- is_available (boolean)
+
+Table: search_cache
+- id (uuid, primary key)
+- anime_title (text, indexed)
+- store (text)
+- search_query (text)
+- results_json (jsonb)
+- cached_at (timestamp)
+- expires_at (timestamp)
+
+Table: user_favorites
+- id (uuid, primary key)
+- user_id (uuid, foreign key -> users.id)
+- product_id (uuid, foreign key -> products.id)
+- favorited_at (timestamp)
+- UNIQUE(user_id, product_id)
+
+Table: user_activity
+- id (uuid, primary key)
+- user_id (uuid, foreign key -> users.id)
+- product_id (uuid, foreign key -> products.id)
+- action_type (enum: viewed, clicked, favorited)
+- timestamp (timestamp)
+
+File Structure:
+├── app.py                          # Main Streamlit app
+├── config.py                       # API keys, Supabase credentials
+├── requirements.txt
+├── .env                            # Environment variables (not committed)
+│
+├── auth/
+│   ├── __init__.py
+│   ├── mal_auth.py                 # MAL OAuth2 flow
+│   └── session_manager.py          # User session handling
+│
+├── database/
+│   ├── __init__.py
+│   ├── supabase_client.py          # Supabase connection
+│   ├── models.py                   # Database operations (CRUD)
+│   └── schema.sql                  # Database schema for reference
+│
+├── scrapers/
+│   ├── __init__.py
+│   ├── amazon_scraper.py           # Amazon Product API integration
+│   ├── aliexpress_scraper.py      # AliExpress scraping/API
+│   ├── ebay_scraper.py             # eBay API (optional)
+│   └── base_scraper.py             # Abstract base class for scrapers
+│
+├── services/
+│   ├── __init__.py
+│   ├── mal_service.py              # Fetch anime lists from MAL
+│   ├── search_service.py           # Coordinate multi-store searches
+│   └── cache_service.py            # Cache management logic
+│
+├── utils/
+│   ├── __init__.py
+│   ├── image_handler.py            # Image downloading/caching
+│   ├── rate_limiter.py             # API rate limiting
+│   └── helpers.py                  # Misc utility functions
+│
+└── components/
+    ├── __init__.py
+    ├── product_card.py             # Reusable product display component
+    ├── anime_list_view.py          # Display user's anime list
+    └── storefront.py               # Main storefront grid layout
+
+
+User Flow
+Landing Page
+"Connect MyAnimeList" button
+Brief explanation of the app
+MAL Authentication
+Redirect to MAL OAuth consent screen
+Store tokens in Supabase users table
+Fetch and cache user's anime list in anime_lists table
+Dashboard
+Display user's anime list with cover images
+Options: "Search All Animes" or select specific titles
+Filters: Watch status, genres, etc.
+Search Process
+For each selected anime:
+Check search_cache for recent results (< 24 hours old)
+If not cached, query e-commerce APIs/scrapers
+Store results in products and search_cache tables
+Show loading progress bar
+Storefront View
+Grid of product cards (3-4 columns)
+Each card shows:
+Product image
+Title (truncated)
+Price
+Store logo/name
+Favorite icon (if logged in)
+Click card → opens product URL in new tab
+Log click in user_activity table
+Additional Features
+Filter by store, price range, product type
+Sort by price, relevance, recency
+"Favorites" page showing saved products
+Sync button to refresh anime list from MAL
+
+API & Integration Details
+MyAnimeList API
+Endpoint: https://api.myanimelist.net/v2/users/{username}/animelist
+Auth: OAuth2 (requires client ID/secret)
+Rate Limit: Unknown, implement exponential backoff
+Data Needed: anime_id, title, main_picture, list_status
+
+AliExpress:
+Web scraping (use requests + BeautifulSoup)
+Challenges: Anti-bot measures, structure changes frequently
+
+Fallback Strategy
+If scrapping unavailable, use Google Shopping scraping or manual store searches
+
+Caching Strategy
+Anime List Cache (anime_lists table)
+TTL: 7 days
+Auto-refresh on user login if stale
+Product Search Cache (search_cache table)
+TTL: 24 hours
+Invalidate manually or on price changes
+Image Cache (local storage or CDN)
+Store product images in /static/cache/
+Prevent re-downloading on page refresh
+Security Considerations
+Token Storage
+Encrypt MAL access/refresh tokens in Supabase
+Use Supabase RLS (Row Level Security) policies
+Never expose tokens in frontend code
+
+Rate Limiting
+Implement per-user rate limits to prevent abuse
+Queue system for bulk anime searches
+Data Privacy
+Allow users to delete their data
+Don't store sensitive payment info (all purchases external)
