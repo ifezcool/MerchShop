@@ -31,7 +31,7 @@ def render_anime_list_view(
                 with cols[j]:
                     with st.container():
                         img_url = anime.get("image_url") or "https://placehold.co/225x320/1E293B/FFFFFF/png?text=Anime"
-                        st.image(img_url, use_column_width=True)
+                        st.image(img_url, use_container_width=True)
                         
                         title = anime.get("title", "Untitled")
                         st.markdown(f"**{title}**")

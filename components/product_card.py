@@ -38,7 +38,7 @@ def render_product_card(product: Dict[str, Any], key_suffix: str = ""):
 
         # Image
         img_url = product.get("image_url") or "https://placehold.co/400x400/1E293B/FFFFFF/png?text=Anime+Merch"
-        st.image(img_url, use_column_width=True)
+        st.image(img_url, use_container_width=True)
 
         # Title
         title = product.get("title", "Anime Merchandise")

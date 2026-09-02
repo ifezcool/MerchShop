@@ -1,0 +1,10 @@
+TypeError: ImageMixin.image() got an unexpected keyword argument 'use_column_width'. Did you mean 'use_container_width'?
+Traceback:
+File "C:\Users\adeni\OneDrive\Documents\Projects\Merchproj\MerchShop\app.py", line 279, in <module>
+    render_anime_list_view(anime_list, on_search_anime=on_single_anime_search)
+    ~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\adeni\OneDrive\Documents\Projects\Merchproj\MerchShop\components\anime_list_view.py", line 34, in render_anime_list_view
+    st.image(img_url, use_column_width=True)
+    ~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+File "C:\Users\adeni\AppData\Local\Programs\Python\Python314\Lib\site-packages\streamlit\runtime\metrics_util.py", line 725, in wrapped_func
+    result = non_optional_func(*args, **kwargs)
