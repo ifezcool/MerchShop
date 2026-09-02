@@ -4,6 +4,8 @@ import streamlit as st
 from config import (
     get_mal_credentials,
     update_mal_credentials,
+    get_ebay_credentials,
+    update_ebay_credentials,
     SUPPORTED_STORES,
     PRODUCT_CATEGORIES,
 )
@@ -16,7 +18,7 @@ from services.search_service import coordinate_search
 from components.product_card import render_product_card
 from components.anime_list_view import render_anime_list_view
 from components.storefront import render_storefront_grid
-from utils.helpers import format_price
+from utils.helpers import format_price, update_env_file
 
 # --- 1. Page Configuration ---
 st.set_page_config(
@@ -315,13 +317,15 @@ with tab_settings:
     
     st.markdown(
         """
-        To allow **multiple users** to log in and search via your registered MyAnimeList App,
-        enter your MAL Developer credentials below. They are saved in `.env` and applied immediately.
+        Configure API integrations for MyAnimeList and retail marketplaces (eBay Browse API).
+        Credentials are saved securely to `.env` and applied immediately to the active session.
         """
     )
 
     current_creds = get_mal_credentials()
+    ebay_creds = get_ebay_credentials()
     
+    st.markdown("### 🎌 MyAnimeList Developer API")
     with st.form("mal_config_form"):
         form_client_id = st.text_input(
             "MAL Client ID",
@@ -343,31 +347,78 @@ with tab_settings:
             help="Must match exactly what you registered in your MAL Developer API Config"
         )
 
-        submitted = st.form_submit_button("💾 Save Credentials & Apply", type="primary")
+        submitted = st.form_submit_button("💾 Save MAL Credentials", type="primary")
         if submitted:
             update_mal_credentials(form_client_id, form_client_secret, form_redirect_uri)
-            
-            # Write to .env file
-            try:
-                env_content = f"MAL_CLIENT_ID={form_client_id.strip()}\nMAL_CLIENT_SECRET={form_client_secret.strip()}\nMAL_REDIRECT_URI={form_redirect_uri.strip()}\n"
-                with open(".env", "w", encoding="utf-8") as f:
-                    f.write(env_content)
-                st.success("✅ Credentials saved to `.env` and applied to active session!")
-            except Exception as e:
-                st.warning(f"Credentials updated in runtime session (could not write .env: {e})")
+            success = update_env_file({
+                "MAL_CLIENT_ID": form_client_id.strip(),
+                "MAL_CLIENT_SECRET": form_client_secret.strip(),
+                "MAL_REDIRECT_URI": form_redirect_uri.strip(),
+            })
+            if success:
+                st.success("✅ MAL Credentials saved to `.env` and applied to active session!")
+            else:
+                st.warning("MAL Credentials updated in runtime session.")
+            st.rerun()
+
+    st.markdown("### 🛍️ eBay Browse API Credentials")
+    with st.form("ebay_config_form"):
+        ebay_client_id = st.text_input(
+            "eBay Client ID (App ID)",
+            value=ebay_creds["client_id"],
+            placeholder="e.g. YourAppI-xxxx-xxxx-xxxx",
+            help="Production Client ID from developer.ebay.com"
+        )
+        ebay_client_secret = st.text_input(
+            "eBay Client Secret (Cert ID)",
+            value=ebay_creds["client_secret"],
+            type="password",
+            placeholder="e.g. PRD-xxxx-xxxx-xxxx",
+            help="Production Client Secret from developer.ebay.com"
+        )
+        ebay_marketplace = st.text_input(
+            "eBay Marketplace ID",
+            value=ebay_creds["marketplace_id"] or "EBAY_US",
+            placeholder="EBAY_US",
+            help="Marketplace ID (e.g. EBAY_US, EBAY_GB, EBAY_DE)"
+        )
+
+        ebay_submitted = st.form_submit_button("💾 Save eBay Credentials", type="primary")
+        if ebay_submitted:
+            update_ebay_credentials(ebay_client_id, ebay_client_secret, ebay_marketplace)
+            success = update_env_file({
+                "EBAY_CLIENT_ID": ebay_client_id.strip(),
+                "EBAY_CLIENT_SECRET": ebay_client_secret.strip(),
+                "EBAY_MARKETPLACE_ID": ebay_marketplace.strip() or "EBAY_US",
+            })
+            if success:
+                st.success("✅ eBay Credentials saved to `.env` and applied to active session!")
+            else:
+                st.warning("eBay Credentials updated in runtime session.")
             st.rerun()
 
     st.markdown("---")
-    st.markdown("#### 📘 How to configure your MyAnimeList App (1-minute guide):")
-    st.markdown(
-        """
-        1. Go to **[MyAnimeList API Config](https://myanimelist.net/apiconfig)**.
-        2. Click **Create ID** (or edit your existing app).
-        3. Fill in:
-           - **App Type**: `Web` or `Other`
-           - **App Redirect URL**: `http://localhost:8501` *(must match exactly)*
-           - **Commercial / Non-Commercial**: Non-Commercial
-        4. Copy the **Client ID** (and Client Secret if Web) and paste it into the form above.
-        5. Now **any user** can click **"Log in with MyAnimeList"** on your app to connect their watchlist seamlessly!
-        """
-    )
+    st.markdown("#### 📘 Setup Guides:")
+    with st.expander("How to configure MyAnimeList App"):
+        st.markdown(
+            """
+            1. Go to **[MyAnimeList API Config](https://myanimelist.net/apiconfig)**.
+            2. Click **Create ID** (or edit your existing app).
+            3. Fill in:
+               - **App Type**: `Web` or `Other`
+               - **App Redirect URL**: `http://localhost:8501` *(must match exactly)*
+               - **Commercial / Non-Commercial**: Non-Commercial
+            4. Copy the **Client ID** (and Client Secret if Web) and paste it into the form above.
+            5. Now **any user** can click **"Log in with MyAnimeList"** on your app to connect their watchlist seamlessly!
+            """
+        )
+    with st.expander("How to configure eBay Developer App"):
+        st.markdown(
+            """
+            1. Register for an account at **[eBay Developer Portal](https://developer.ebay.com)**.
+            2. Under **Application Keys**, generate keys for **Production** (or Sandbox for testing).
+            3. Copy the **Client ID** (App ID) and **Client Secret** (Cert ID).
+            4. Paste them into the eBay Credentials form above or into your `.env` file.
+            5. Search calls will immediately start retrieving live listings from the eBay Browse API!
+            """
+        )

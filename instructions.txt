@@ -1,208 +1,136 @@
-Project Brief: MyAnimeList Merchandise Finder
+# Task: Replace fake eBay scraper with real eBay Browse API integration
 
-Overview
+**File to rewrite:** `scrapers/ebay_scraper.py`
+**Files to touch:** `config.py`, `.env.example`, `services/search_service.py` (no schema change, just verify), `requirements.txt`
 
-A Streamlit web application that connects to a user's MyAnimeList account, retrieves their anime watchlist, and searches e-commerce platforms for related merchandise. Results are displayed as a personalized storefront with clickable product cards linking to external retailers.
-Core Features
-MyAnimeList Integration
-OAuth2 authentication with MAL API
-Fetch user's anime list (completed, watching, plan-to-watch, dropped, on-hold)
-Display anime titles, cover images, and metadata
+## Context (read this first)
 
-Merchandise Search
-Query multiple e-commerce platforms: Amazon, AliExpress, eBay, Etsy, etc.
-Search for character figures, clothing, posters, replicas (e.g., "Ichigo sword replica" for Bleach)
-Filter by product type, price range, store
+`ebay_scraper.py` currently does NOT call eBay. It generates fake, templated
+product titles/prices/ratings and builds a plain eBay search URL from that
+fake title. There is no real product data. This task replaces that with real
+results from eBay's **Browse API**, using an **Application access token**
+(client credentials grant — no user login required, this is store-side
+product search, not account-specific).
 
-Personalized Storefront
-Grid layout displaying product cards (image, title, price, store logo)
-Click-through to external product pages
-Save/favorite products for later
+Do not touch `amazon_scraper.py` or `aliexpress_scraper.py` in this task —
+same fake-data problem exists there but is out of scope.
 
-User Management
-Store user preferences and search history
-Cache search results to reduce API calls
-Track which products users have viewed/favorited
+## 1. Prerequisites (human must do this manually first — flag if missing)
 
-Technical Stack
+1. Create an eBay Developer account: https://developer.ebay.com
+2. Create an application under "Application Keys" → get a **Production**
+   `Client ID` (App ID) and `Client Secret` (Cert ID).
+3. No redirect URI / RuName needed for this flow — client credentials grant
+   is app-only, not user OAuth.
 
-Frontend: Streamlit
-Backend: Python 3.10+
-Database: Supabase (PostgreSQL)
-APIs:
+If `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` are not present in the
+environment, the scraper must fail gracefully (return `[]` and log a clear
+warning), not crash the app.
 
-MyAnimeList API (Official)
-AliExpress Web scraping
-eBay API (optional)
+## 2. Config changes
 
-Database Schema (Supabase)
-Table: users
-- id (uuid, primary key)
-- mal_username (text, unique)
-- mal_user_id (integer, unique)
-- access_token (text, encrypted)
-- refresh_token (text, encrypted)
-- created_at (timestamp)
-- last_login (timestamp)
+In `config.py`, add:
 
-Table: anime_lists
-- id (uuid, primary key)
-- user_id (uuid, foreign key -> users.id)
-- mal_anime_id (integer)
-- anime_title (text)
-- anime_image_url (text)
-- watch_status (enum: watching, completed, plan_to_watch, dropped, on_hold)
-- last_synced (timestamp)
-- UNIQUE(user_id, mal_anime_id)
+```python
+EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID", "")
+EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET", "")
+EBAY_MARKETPLACE_ID = os.getenv("EBAY_MARKETPLACE_ID", "EBAY_US")
+```
 
-Table: products
-- id (uuid, primary key)
-- anime_id (integer, indexed)
-- anime_title (text)
-- product_title (text)
-- product_url (text)
-- image_url (text)
-- price (decimal)
-- currency (text)
-- store (text: amazon, aliexpress, ebay, etc.)
-- product_type (text: figure, clothing, accessory, replica, poster, etc.)
-- asin_or_product_id (text, unique per store)
-- last_updated (timestamp)
-- is_available (boolean)
+Add the same three keys (blank values) to `.env.example` with a comment
+explaining where to get them.
 
-Table: search_cache
-- id (uuid, primary key)
-- anime_title (text, indexed)
-- store (text)
-- search_query (text)
-- results_json (jsonb)
-- cached_at (timestamp)
-- expires_at (timestamp)
+## 3. New OAuth token handling
 
-Table: user_favorites
-- id (uuid, primary key)
-- user_id (uuid, foreign key -> users.id)
-- product_id (uuid, foreign key -> products.id)
-- favorited_at (timestamp)
-- UNIQUE(user_id, product_id)
+Client credentials grant (app token, NOT the PKCE user-login flow already
+used for MAL — do not reuse or confuse the two):
 
-Table: user_activity
-- id (uuid, primary key)
-- user_id (uuid, foreign key -> users.id)
-- product_id (uuid, foreign key -> products.id)
-- action_type (enum: viewed, clicked, favorited)
-- timestamp (timestamp)
+- `POST https://api.ebay.com/identity/v1/oauth2/token`
+- Header: `Authorization: Basic <base64(client_id:client_secret)>`
+- Header: `Content-Type: application/x-www-form-urlencoded`
+- Body: `grant_type=client_credentials&scope=https://api.ebay.com/oauth/api_scope`
+- Response: `{ "access_token": "...", "expires_in": 7200, ... }`
 
-File Structure:
-├── app.py                          # Main Streamlit app
-├── config.py                       # API keys, Supabase credentials
-├── requirements.txt
-├── .env                            # Environment variables (not committed)
-│
-├── auth/
-│   ├── __init__.py
-│   ├── mal_auth.py                 # MAL OAuth2 flow
-│   └── session_manager.py          # User session handling
-│
-├── database/
-│   ├── __init__.py
-│   ├── supabase_client.py          # Supabase connection
-│   ├── models.py                   # Database operations (CRUD)
-│   └── schema.sql                  # Database schema for reference
-│
-├── scrapers/
-│   ├── __init__.py
-│   ├── amazon_scraper.py           # Amazon Product API integration
-│   ├── aliexpress_scraper.py      # AliExpress scraping/API
-│   ├── ebay_scraper.py             # eBay API (optional)
-│   └── base_scraper.py             # Abstract base class for scrapers
-│
-├── services/
-│   ├── __init__.py
-│   ├── mal_service.py              # Fetch anime lists from MAL
-│   ├── search_service.py           # Coordinate multi-store searches
-│   └── cache_service.py            # Cache management logic
-│
-├── utils/
-│   ├── __init__.py
-│   ├── image_handler.py            # Image downloading/caching
-│   ├── rate_limiter.py             # API rate limiting
-│   └── helpers.py                  # Misc utility functions
-│
-└── components/
-    ├── __init__.py
-    ├── product_card.py             # Reusable product display component
-    ├── anime_list_view.py          # Display user's anime list
-    └── storefront.py               # Main storefront grid layout
+Requirements for the implementation:
+- Cache the token in memory with its expiry timestamp; only refetch when
+  expired (don't request a new token on every search call).
+- If the token request fails, log the status code + response body and
+  return `[]` from `search()` — never raise up into the Streamlit UI.
 
+## 4. Real search call
 
-User Flow
-Landing Page
-"Connect MyAnimeList" button
-Brief explanation of the app
-MAL Authentication
-Redirect to MAL OAuth consent screen
-Store tokens in Supabase users table
-Fetch and cache user's anime list in anime_lists table
-Dashboard
-Display user's anime list with cover images
-Options: "Search All Animes" or select specific titles
-Filters: Watch status, genres, etc.
-Search Process
-For each selected anime:
-Check search_cache for recent results (< 24 hours old)
-If not cached, query e-commerce APIs/scrapers
-Store results in products and search_cache tables
-Show loading progress bar
-Storefront View
-Grid of product cards (3-4 columns)
-Each card shows:
-Product image
-Title (truncated)
-Price
-Store logo/name
-Favorite icon (if logged in)
-Click card → opens product URL in new tab
-Log click in user_activity table
-Additional Features
-Filter by store, price range, product type
-Sort by price, relevance, recency
-"Favorites" page showing saved products
-Sync button to refresh anime list from MAL
+- `GET https://api.ebay.com/buy/browse/v1/item_summary/search`
+- Header: `Authorization: Bearer <access_token>`
+- Header: `X-EBAY-C-MARKETPLACE-ID: EBAY_US` (from `EBAY_MARKETPLACE_ID`)
+- Query params: `q=<search query>&limit=10` (add `category_ids` later if
+  needed; not required for v1)
 
-API & Integration Details
-MyAnimeList API
-Endpoint: https://api.myanimelist.net/v2/users/{username}/animelist
-Auth: OAuth2 (requires client ID/secret)
-Rate Limit: Unknown, implement exponential backoff
-Data Needed: anime_id, title, main_picture, list_status
+Relevant response fields per item in `itemSummaries[]`:
+- `title`
+- `price.value`, `price.currency`
+- `image.imageUrl` — this is a **real product photo**, use it directly
+- `itemWebUrl` — this is the **direct link to the exact listing** (this is
+  the fix for "leads to search rather than the exact item")
+- `itemId`
+- optional: `seller.feedbackPercentage` if you want a rating-like field
 
-AliExpress:
-Web scraping (use requests + BeautifulSoup)
-Challenges: Anti-bot measures, structure changes frequently
+## 5. Rewrite `EbayScraper.search()`
 
-Fallback Strategy
-If scrapping unavailable, use Google Shopping scraping or manual store searches
+Keep the exact same return schema the rest of the app expects (see
+`base_scraper.py` / other scrapers for the dict shape: `id`, `title`,
+`price`, `currency`, `url`, `image_url`, `store`, `product_type`,
+`anime_title`, `rating`). Map real API fields into that shape:
 
-Caching Strategy
-Anime List Cache (anime_lists table)
-TTL: 7 days
-Auto-refresh on user login if stale
-Product Search Cache (search_cache table)
-TTL: 24 hours
-Invalidate manually or on price changes
-Image Cache (local storage or CDN)
-Store product images in /static/cache/
-Prevent re-downloading on page refresh
-Security Considerations
-Token Storage
-Encrypt MAL access/refresh tokens in Supabase
-Use Supabase RLS (Row Level Security) policies
-Never expose tokens in frontend code
+```python
+{
+    "id": item["itemId"],
+    "title": item["title"],
+    "price": float(item["price"]["value"]),
+    "currency": item["price"]["currency"],
+    "url": item["itemWebUrl"],          # real item link, not a search URL
+    "image_url": item.get("image", {}).get("imageUrl", ""),
+    "store": "eBay",
+    "product_type": product_type,
+    "anime_title": anime_title,
+    "rating": item.get("seller", {}).get("feedbackPercentage"),
+}
+```
 
-Rate Limiting
-Implement per-user rate limits to prevent abuse
-Queue system for bulk anime searches
-Data Privacy
-Allow users to delete their data
-Don't store sensitive payment info (all purchases external)
+Delete the hardcoded `templates` dict and the fake title generation
+entirely. Build the search query from the real `query`/`anime_title`/
+`product_type` args passed in (same as before), not from AniList character
+names — those were only needed to make fake titles look specific.
+
+Keep `self.rate_limiter.wait("ebay")` before the HTTP call.
+
+Wrap the search HTTP call in try/except; on any exception or non-200
+response, log it and return `[]` (matches existing silent-degrade pattern
+elsewhere in the app, but log instead of bare `pass` so failures are
+visible in server logs).
+
+## 6. `image_handler.py` interaction
+
+`validate_image_url()` currently overwrites any URL that doesn't already
+look like a real image. Once eBay returns real `image.imageUrl` values,
+those will pass the existing `url.startswith("http")` check and be used
+directly — no changes needed there for eBay specifically, just confirm this
+in testing (print/log the image_url before and after `validate_image_url`).
+
+## 7. requirements.txt
+
+No new dependencies needed — `requests` is already used elsewhere in the
+codebase.
+
+## 8. Testing checklist (do this before calling it done)
+
+1. Set `EBAY_CLIENT_ID` / `EBAY_CLIENT_SECRET` in `.env`.
+2. Run a search for a common anime (e.g. "Demon Slayer figure") through the
+   Streamlit app.
+3. Confirm: real product photos appear (not placeholder boxes) for eBay
+   results specifically.
+4. Click a "Buy on eBay" link and confirm it opens the **specific listing**,
+   not a search results page.
+5. Temporarily set a wrong `EBAY_CLIENT_SECRET` and confirm the app doesn't
+   crash — it should show zero eBay results and log an auth error.
+6. Confirm Amazon/AliExpress sections are unaffected (still fake — that's
+   expected, out of scope).

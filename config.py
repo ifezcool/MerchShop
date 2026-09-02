@@ -17,6 +17,11 @@ MAL_REDIRECT_URI = os.getenv("MAL_REDIRECT_URI", "http://localhost:8501")
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
+# eBay Developer API credentials (Browse API)
+EBAY_CLIENT_ID = os.getenv("EBAY_CLIENT_ID", "")
+EBAY_CLIENT_SECRET = os.getenv("EBAY_CLIENT_SECRET", "")
+EBAY_MARKETPLACE_ID = os.getenv("EBAY_MARKETPLACE_ID", "EBAY_US")
+
 # Server and caching settings
 STREAMLIT_PORT = int(os.getenv("STREAMLIT_PORT", "8501"))
 ANIME_LIST_TTL_SECONDS = int(os.getenv("ANIME_LIST_TTL_SECONDS", str(7 * 24 * 60 * 60)))  # 7 days
@@ -53,3 +58,21 @@ def update_mal_credentials(client_id: str, client_secret: str = "", redirect_uri
     os.environ["MAL_CLIENT_ID"] = MAL_CLIENT_ID
     os.environ["MAL_CLIENT_SECRET"] = MAL_CLIENT_SECRET
     os.environ["MAL_REDIRECT_URI"] = MAL_REDIRECT_URI
+
+def get_ebay_credentials():
+    """Retrieve current eBay credentials dynamically."""
+    return {
+        "client_id": os.getenv("EBAY_CLIENT_ID", EBAY_CLIENT_ID),
+        "client_secret": os.getenv("EBAY_CLIENT_SECRET", EBAY_CLIENT_SECRET),
+        "marketplace_id": os.getenv("EBAY_MARKETPLACE_ID", EBAY_MARKETPLACE_ID),
+    }
+
+def update_ebay_credentials(client_id: str, client_secret: str = "", marketplace_id: str = "EBAY_US"):
+    """Update runtime and environment eBay credentials."""
+    global EBAY_CLIENT_ID, EBAY_CLIENT_SECRET, EBAY_MARKETPLACE_ID
+    EBAY_CLIENT_ID = client_id.strip()
+    EBAY_CLIENT_SECRET = client_secret.strip()
+    EBAY_MARKETPLACE_ID = marketplace_id.strip() or "EBAY_US"
+    os.environ["EBAY_CLIENT_ID"] = EBAY_CLIENT_ID
+    os.environ["EBAY_CLIENT_SECRET"] = EBAY_CLIENT_SECRET
+    os.environ["EBAY_MARKETPLACE_ID"] = EBAY_MARKETPLACE_ID

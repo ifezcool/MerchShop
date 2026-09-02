@@ -44,3 +44,40 @@ def format_price(price: Optional[float], currency: str = "USD") -> str:
 def sanitize_filename(name: str) -> str:
     """Sanitize string for safe filenames."""
     return re.sub(r'[\\/*?:"<>|]', "", name).strip()
+
+def update_env_file(key_values: Dict[str, str], env_path: str = ".env") -> bool:
+    """Update or append specific key-value pairs in .env while preserving existing contents."""
+    p = Path(env_path)
+    lines = []
+    if p.is_file():
+        try:
+            with open(p, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+        except Exception:
+            lines = []
+
+    remaining_keys = set(key_values.keys())
+    new_lines = []
+    for line in lines:
+        stripped = line.strip()
+        if stripped and not stripped.startswith("#") and "=" in stripped:
+            k, _ = stripped.split("=", 1)
+            k = k.strip()
+            if k in key_values:
+                new_lines.append(f"{k}={key_values[k]}\n")
+                remaining_keys.discard(k)
+                continue
+        new_lines.append(line)
+
+    for k in sorted(remaining_keys):
+        new_lines.append(f"{k}={key_values[k]}\n")
+
+    try:
+        with open(p, "w", encoding="utf-8") as f:
+            f.writelines(new_lines)
+        for k, v in key_values.items():
+            os.environ[k] = v
+        return True
+    except Exception:
+        return False
+
